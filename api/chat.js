@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // Enable CORS for local development
+    // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -31,9 +31,11 @@ export default async function handler(req, res) {
     
     const fullMessages = [systemPrompt, ...messages];
     
-    // Log the request for debugging (remove in production)
-    console.log('Sending request to Groq with model: mixtral-8x7b-32768');
-    console.log('Messages count:', fullMessages.length);
+    // Check if API key exists
+    if (!process.env.GROQ_API_KEY) {
+        console.error('GROQ_API_KEY is not set in environment variables');
+        return res.status(500).json({ error: 'API key not configured' });
+    }
     
     try {
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -47,65 +49,27 @@ export default async function handler(req, res) {
                 messages: fullMessages,
                 temperature: 0.3,
                 max_tokens: 4096,
-                stream: true,
+                stream: false, // Using non-streaming for simplicity
             }),
         });
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Groq API error response:', errorText);
+            console.error('Groq API error:', response.status, errorText);
             return res.status(response.status).json({ 
                 error: 'Groq API error',
+                status: response.status,
                 details: errorText 
             });
         }
         
-        // Set streaming headers
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Transfer-Encoding', 'chunked');
-        res.setHeader('Cache-Control', 'no-cache');
+        const data = await response.json();
+        const assistantMessage = data.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
         
-        // Stream the response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-                
-                for (const line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                        const data = line.slice(6);
-                        try {
-                            const parsed = JSON.parse(data);
-                            const content = parsed.choices[0]?.delta?.content || '';
-                            if (content) {
-                                res.write(content);
-                            }
-                        } catch (e) {
-                            // Skip invalid JSON
-                            console.log('Parse error:', e.message);
-                        }
-                    } else if (line === 'data: [DONE]') {
-                        // Stream finished
-                        break;
-                    }
-                }
-            }
-        } finally {
-            reader.releaseLock();
-            res.end();
-        }
+        return res.status(200).json({ content: assistantMessage });
         
     } catch (error) {
-        console.error('Stream error:', error);
-        if (!res.headersSent) {
-            return res.status(500).json({ error: 'Internal server error', message: error.message });
-        }
-        res.end();
+        console.error('API error:', error);
+        return res.status(500).json({ error: 'Internal server error', message: error.message });
     }
 }
