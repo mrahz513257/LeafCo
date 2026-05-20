@@ -1,0 +1,15 @@
+{
+  "name": "techai-assistant",
+  "version": "1.0.0",
+  "description": "Technology-specialized AI assistant using Groq API",
+  "main": "api/chat.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel deploy"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": "20.x"
+  }
+}
